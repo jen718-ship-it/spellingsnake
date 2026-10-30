@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Spelling Snake</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Quicksand:wght@700&display=swap');
+
+        * {
+            font-family: 'Fredoka One', 'Quicksand', cursive, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            background: linear-gradient(135deg, #a8ff78 0%, #78ffd6 100%);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Snake Game Grid Styling */
+        .game-container {
+            background-color: #e8fccf;
+            background-image: radial-gradient(#b2f272 18%, transparent 19%);
+            background-size: 24px 24px;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.1);
+        }
+
+        /* Keyframes for wrong letter shake & flash */
+        @keyframes shake-flash {
+            0%, 100% { transform: translate(0, 0) scale(1); opacity: 1; }
+            10%, 30%, 50%, 70%, 90% { transform: translate(-4px, 2px) scale(1.1); opacity: 0.2; }
+            20%, 40%, 60%, 80% { transform: translate(4px, -2px) scale(0.9); opacity: 0.8; }
+        }
+
+        .btn-bounce {
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+        }
+        .btn-bounce:active {
+            transform: scale(0.9);
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.4);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ff6b6b;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen p-2 sm:p-4 text-slate-800 justify-between overflow-hidden">
+
+    <!-- LANDSCAPE TOP HEADER BAR -->
+    <header class="w-full max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-3 z-10 shrink-0">
+        <!-- Settings & Gamepad Toggle -->
+        <div class="flex items-center gap-2">
+            <button id="btn-settings" class="btn-bounce bg-amber-400 hover:bg-amber-500 text-white w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-xl sm:text-2xl shadow-md border-b-4 border-amber-600 shrink-0">
+                <i class="fa-solid fa-gear"></i>
+            </button>
+            <button id="btn-toggle-controls" class="btn-bounce bg-indigo-500 hover:bg-indigo-600 text-white w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-xl sm:text-2xl shadow-md border-b-4 border-indigo-700 shrink-0">
+                <i class="fa-solid fa-gamepad"></i>
+            </button>
+        </div>
+
+        <!-- Active Player Badge (Versus Mode) -->
+        <div id="player-banner" class="hidden bg-purple-500 text-white px-3 py-1.5 rounded-2xl border-2 border-white shadow-md flex items-center gap-2 text-base sm:text-xl shrink-0">
+            <i class="fa-solid fa-user"></i>
+            <span id="player-name-display">Player 1</span>
+        </div>
+
+        <!-- Word Formation Display (Center Header) -->
+        <div id="word-display" class="flex-1 max-w-2xl min-h-[50px] sm:min-h-[60px] bg-white/90 backdrop-blur-md rounded-2xl shadow-lg border-4 border-white flex items-center justify-center gap-1.5 sm:gap-2.5 p-1.5 px-3">
+            <!-- Letters appended here dynamically -->
+        </div>
+
+        <!-- Timer Display (Versus Mode) -->
+        <div id="timer-display" class="hidden bg-rose-500 text-white px-3 py-1.5 rounded-2xl border-2 border-white shadow-md items-center gap-1.5 text-base sm:text-xl shrink-0">
+            <i class="fa-solid fa-stopwatch"></i>
+            <span id="timer-text">0.0s</span>
+        </div>
+
+        <!-- Progress Bar & Count Display -->
+        <div class="w-32 sm:w-48 flex items-center gap-2 bg-white/80 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl shadow-lg border-4 border-white shrink-0">
+            <div class="flex-1 bg-gray-200 h-5 sm:h-7 rounded-full overflow-hidden p-1 shadow-inner border border-gray-300 relative">
+                <div id="progress-fill" class="bg-gradient-to-r from-yellow-400 via-orange-400 to-pink-500 h-full rounded-full transition-all duration-500 w-0"></div>
+            </div>
+            <div id="progress-text" class="text-sm sm:text-lg font-bold text-pink-600 px-1 shrink-0">0/0</div>
+        </div>
+    </header>
+
+    <!-- WIDER LANDSCAPE MAIN GAME LAYOUT AREA -->
+    <main class="w-full max-w-7xl mx-auto flex-1 flex items-center justify-center my-2 gap-4 relative overflow-hidden">
+        
+        <!-- WIDER CANVAS GAME BOARD (16:9 Aspect Ratio) -->
+        <div id="grid-board" class="game-container aspect-[16/9] w-full max-h-[78vh] rounded-3xl border-8 border-white shadow-2xl relative overflow-hidden flex items-center justify-center">
+            <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+            <!-- PRE-WORD / READY OVERLAY -->
+            <div id="ready-overlay" class="absolute inset-0 bg-black/30 backdrop-blur-xs flex items-center justify-center z-20 transition-opacity duration-300">
+                <button id="btn-ready" class="btn-bounce bg-emerald-400 hover:bg-emerald-500 text-white w-24 h-24 sm:w-32 sm:h-32 rounded-full flex items-center justify-center text-5xl sm:text-7xl shadow-2xl border-8 border-white animate-pulse">
+                    <i class="fa-solid fa-play ml-2"></i>
+                </button>
+            </div>
+
+            <!-- CELEBRATION / SINGLE PLAYER FINISH OVERLAY -->
+            <div id="victory-overlay" class="hidden absolute inset-0 bg-pink-500/90 backdrop-blur-md flex flex-col items-center justify-center gap-6 z-30">
+                <i class="fa-solid fa-trophy text-yellow-300 text-8xl animate-bounce"></i>
+                <button id="btn-restart" class="btn-bounce bg-yellow-400 hover:bg-yellow-500 text-white w-24 h-24 rounded-full flex items-center justify-center text-5xl shadow-2xl border-4 border-white">
+                    <i class="fa-solid fa-rotate-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- ON-SCREEN DIRECTIONAL CONTROLS -->
+        <div id="touch-controls" class="hidden sm:flex flex-col items-center justify-center bg-white/40 backdrop-blur-md p-3 rounded-3xl border-4 border-white shadow-xl shrink-0">
+            <div class="grid grid-cols-3 gap-2 w-36 sm:w-44">
+                <div></div>
+                <button id="btn-up" class="btn-bounce bg-cyan-400 active:bg-cyan-500 text-white h-11 sm:h-13 rounded-2xl flex items-center justify-center text-2xl shadow-md border-b-4 border-cyan-600">
+                    <i class="fa-solid fa-arrow-up"></i>
+                </button>
+                <div></div>
+                <button id="btn-left" class="btn-bounce bg-cyan-400 active:bg-cyan-500 text-white h-11 sm:h-13 rounded-2xl flex items-center justify-center text-2xl shadow-md border-b-4 border-cyan-600">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <button id="btn-down" class="btn-bounce bg-cyan-400 active:bg-cyan-500 text-white h-11 sm:h-13 rounded-2xl flex items-center justify-center text-2xl shadow-md border-b-4 border-cyan-600">
+                    <i class="fa-solid fa-arrow-down"></i>
+                </button>
+                <button id="btn-right" class="btn-bounce bg-cyan-400 active:bg-cyan-500 text-white h-11 sm:h-13 rounded-2xl flex items-center justify-center text-2xl shadow-md border-b-4 border-cyan-600">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- SETUP MODAL (MODES + PLAYER SETUP + WORD CACHE) -->
+    <div id="setup-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+        <div class="bg-white w-[92vw] max-w-4xl rounded-3xl p-4 sm:p-6 shadow-2xl border-4 border-purple-300 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
+            
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center border-b-2 border-gray-100 pb-2">
+                <div class="text-3xl text-purple-500 flex items-center gap-3">
+                    <i class="fa-solid fa-sliders"></i>
+                </div>
+                <button id="btn-close-modal" class="btn-bounce text-gray-400 hover:text-red-500 text-3xl">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Mode Selection Toggles (Icons) -->
+            <div class="grid grid-cols-2 gap-3 bg-purple-50 p-2 rounded-2xl border-2 border-purple-200">
+                <button id="btn-mode-classic" class="btn-bounce py-2 rounded-xl flex items-center justify-center text-2xl gap-2 font-bold bg-purple-600 text-white shadow-md">
+                    <i class="fa-solid fa-user"></i>
+                </button>
+                <button id="btn-mode-versus" class="btn-bounce py-2 rounded-xl flex items-center justify-center text-2xl gap-2 font-bold text-purple-600 hover:bg-purple-200">
+                    <i class="fa-solid fa-users"></i>
+                </button>
+            </div>
+
+            <!-- SIDE-BY-SIDE TWO-COLUMN CONTENT GRID -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                <!-- LEFT COLUMN: PLAYER SETUP (Versus Mode) -->
+                <div id="versus-player-section" class="hidden flex-col gap-3 bg-pink-50 p-3.5 sm:p-4 rounded-2xl border-2 border-pink-200">
+                    <div class="flex gap-2">
+                        <input id="input-player-name" type="text" placeholder="name..." class="flex-1 min-w-0 bg-white border-2 border-pink-300 rounded-xl px-3 py-2 text-xl font-bold text-pink-700 outline-none text-center">
+                        <button id="btn-add-player" class="btn-bounce bg-pink-500 text-white w-11 h-11 rounded-xl flex items-center justify-center text-xl shadow-md border-b-4 border-pink-700 shrink-0">
+                            <i class="fa-solid fa-user-plus"></i>
+                        </button>
+                    </div>
+                    <div id="player-list-box" class="flex flex-wrap content-start gap-2 max-h-48 overflow-y-auto p-2 bg-white/60 rounded-xl border border-pink-200 min-h-[100px]"></div>
+                </div>
+
+                <!-- RIGHT COLUMN: WORD SETUP -->
+                <div id="word-section" class="flex flex-col gap-3 bg-purple-50 p-3.5 sm:p-4 rounded-2xl border-2 border-purple-200">
+                    <div class="flex gap-2">
+                        <input id="input-word" type="text" placeholder="abc..." lowercase class="flex-1 min-w-0 bg-white border-2 border-purple-300 rounded-xl px-3 py-2 text-xl font-bold text-purple-700 outline-none focus:border-purple-500 text-center">
+                        <button id="btn-add-word" class="btn-bounce bg-purple-500 hover:bg-purple-600 text-white w-11 h-11 rounded-xl flex items-center justify-center text-xl shadow-md border-b-4 border-purple-700 shrink-0">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </div>
+
+                    <!-- Vertically scrollable tags area -->
+                    <div id="word-list-box" class="max-h-48 overflow-y-auto flex flex-wrap content-start gap-2 p-2 bg-white/60 rounded-xl border border-purple-200 min-h-[100px]"></div>
+                </div>
+
+            </div>
+
+            <!-- Start Game Button -->
+            <button id="btn-start-game" class="btn-bounce w-full bg-emerald-400 hover:bg-emerald-500 text-white py-3.5 sm:py-4 rounded-2xl flex items-center justify-center text-3xl sm:text-4xl shadow-lg border-b-4 border-emerald-600 mt-1">
+                <i class="fa-solid fa-check"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- VERSUS LEADERBOARD MODAL -->
+    <div id="leaderboard-modal" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl border-4 border-yellow-300 flex flex-col items-center gap-4">
+            <!-- Trophy & Title Header -->
+            <div class="flex items-center justify-center gap-3 text-yellow-500 text-5xl">
+                <i class="fa-solid fa-trophy animate-bounce"></i>
+            </div>
+
+            <!-- Podium / Scores List -->
+            <div id="leaderboard-list" class="w-full flex flex-col gap-3 max-h-72 overflow-y-auto px-1 py-2">
+                <!-- Ranked rows generated dynamically -->
+            </div>
+
+            <button id="btn-leaderboard-close" class="btn-bounce w-full bg-indigo-500 hover:bg-indigo-600 text-white py-3.5 rounded-2xl flex items-center justify-center text-3xl shadow-lg border-b-4 border-indigo-700">
+                <i class="fa-solid fa-rotate-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT GAME LOGIC -->
+    <script>
+        // Web Audio API Synthesizer Context
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playClick() {
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(200, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+
+            playCorrect() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+                    gain.gain.setValueAtTime(0.3, now + idx * 0.06);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.06 + 0.2);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.06);
+                    osc.stop(now + idx * 0.06 + 0.2);
+                });
+            }
+
+            playWrong() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(160, now);
+                osc.frequency.linearRampToValueAtTime(110, now + 0.25);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            }
+        }
+
+        const sfx = new SoundFX();
+
+        // 1. WIDER FIELD GRID CONFIGURATION (16x9 Aspect Ratio)
+        const GRID_COLS = 16;
+        const GRID_ROWS = 9;
+
+        // 2. LOCAL STORAGE PERSISTENCE SETUP
+        const STORAGE_KEY = 'spelling_snake_words_v1';
+        let wordList = loadStoredWords();
+
+        function loadStoredWords() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (data) {
+                    const parsed = JSON.parse(data);
+                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                }
+            } catch(e) {}
+            return ['cat', 'dog', 'sun', 'star', 'apple'];
+        }
+
+        function saveWordsToStore() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(wordList));
+            } catch(e) {}
+        }
+
+        // GAME MODES & VERSUS TIMING STATE
+        let gameMode = 'classic'; // 'classic' or 'versus'
+        let players = ['Player 1', 'Player 2'];
+        let activePlayerIndex = 0;
+        let playerTimes = []; // Array of { name, timeInSec }
+        let timerInterval = null;
+        let timerStartTime = 0;
+        let elapsedSeconds = 0;
+
+        let currentWordIndex = 0;
+        let currentTargetWord = "";
+        let collectedLetterIndex = 0;
+        let snake = [];
+        let dir = { x: 1, y: 0 };
+        let nextDir = { x: 1, y: 0 };
+        let scatteredLetters = [];
+        let isRunning = false;
+        let gameLoopInterval = null;
+        const GAME_SPEED = 220;
+
+        // Canvas Setup
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const board = document.getElementById('grid-board');
+            const rect = board.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            draw();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function drawRoundedRect(ctx, x, y, width, height, radius, fillColor, strokeColor, strokeWidth = 0) {
+            ctx.beginPath();
+            if (ctx.roundRect) {
+                ctx.roundRect(x, y, width, height, radius);
+            } else {
+                ctx.moveTo(x + radius, y);
+                ctx.lineTo(x + width - radius, y);
+                ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+                ctx.lineTo(x + width, y + height - radius);
+                ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+                ctx.lineTo(x + radius, y + height);
+                ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+                ctx.lineTo(x, y + radius);
+                ctx.quadraticCurveTo(x, y, x + radius, y);
+                ctx.closePath();
+            }
+            if (fillColor) {
+                ctx.fillStyle = fillColor;
+                ctx.fill();
+            }
+            if (strokeColor && strokeWidth > 0) {
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = strokeWidth;
+                ctx.stroke();
+            }
+        }
+
+        // UI DOM Elements
+        const setupModal = document.getElementById('setup-modal');
+        const wordListBox = document.getElementById('word-list-box');
+        const inputWord = document.getElementById('input-word');
+        const wordDisplay = document.getElementById('word-display');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        const readyOverlay = document.getElementById('ready-overlay');
+        const victoryOverlay = document.getElementById('victory-overlay');
+        const touchControls = document.getElementById('touch-controls');
+        const btnModeClassic = document.getElementById('btn-mode-classic');
+        const btnModeVersus = document.getElementById('btn-mode-versus');
+        const versusSection = document.getElementById('versus-player-section');
+        const inputPlayerName = document.getElementById('input-player-name');
+        const playerListBox = document.getElementById('player-list-box');
+        const playerBanner = document.getElementById('player-banner');
+        const playerNameDisplay = document.getElementById('player-name-display');
+        const timerDisplay = document.getElementById('timer-display');
+        const timerText = document.getElementById('timer-text');
+        const leaderboardModal = document.getElementById('leaderboard-modal');
+        const leaderboardList = document.getElementById('leaderboard-list');
+
+        // Mode Toggles & Setup Event Listeners
+        btnModeClassic.onclick = () => {
+            sfx.playClick();
+            gameMode = 'classic';
+            btnModeClassic.className = 'btn-bounce py-2 rounded-xl flex items-center justify-center text-2xl gap-2 font-bold bg-purple-600 text-white shadow-md';
+            btnModeVersus.className = 'btn-bounce py-2 rounded-xl flex items-center justify-center text-2xl gap-2 font-bold text-purple-600 hover:bg-purple-200';
+            versusSection.classList.add('hidden');
+            versusSection.classList.remove('flex');
+        };
+
+        btnModeVersus.onclick = () => {
+            sfx.playClick();
+            gameMode = 'versus';
+            btnModeVersus.className = 'btn-bounce py-2 rounded-xl flex items-center justify-center text-2xl gap-2 font-bold bg-purple-600 text-white shadow-md';
+            btnModeClassic.className = 'btn-bounce py-2 rounded-xl flex items-center justify-center text-2xl gap-2 font-bold text-purple-600 hover:bg-purple-200';
+            versusSection.classList.remove('hidden');
+            versusSection.classList.add('flex');
+            renderPlayerList();
+        };
+
+        document.getElementById('btn-add-player').onclick = addPlayerFromInput;
+        inputPlayerName.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addPlayerFromInput();
+        });
+
+        function addPlayerFromInput() {
+            const name = inputPlayerName.value.trim();
+            if (name.length > 0) {
+                players.push(name);
+                inputPlayerName.value = '';
+                sfx.playClick();
+                renderPlayerList();
+            }
+        }
+
+        function renderPlayerList() {
+            playerListBox.innerHTML = '';
+            players.forEach((p, idx) => {
+                const tag = document.createElement('div');
+                tag.className = 'bg-white text-pink-700 px-3 py-1 rounded-xl text-base font-bold flex items-center gap-2 border border-pink-300 shadow-xs';
+                tag.innerHTML = `<span>${p}</span><button onclick="removePlayer(${idx})" class="text-pink-300 hover:text-red-500"><i class="fa-solid fa-circle-xmark"></i></button>`;
+                playerListBox.appendChild(tag);
+            });
+        }
+
+        window.removePlayer = (idx) => {
+            sfx.playClick();
+            players.splice(idx, 1);
+            renderPlayerList();
+        };
+
+        document.getElementById('btn-settings').onclick = () => {
+            sfx.playClick();
+            pauseGame();
+            stopTimer();
+            renderWordList();
+            renderPlayerList();
+            setupModal.classList.remove('hidden');
+        };
+
+        document.getElementById('btn-toggle-controls').onclick = () => {
+            sfx.playClick();
+            touchControls.classList.toggle('hidden');
+            touchControls.classList.toggle('flex');
+            setTimeout(resizeCanvas, 50);
+        };
+
+        document.getElementById('btn-close-modal').onclick = () => {
+            sfx.playClick();
+            if (wordList.length > 0) {
+                setupModal.classList.add('hidden');
+            }
+        };
+
+        document.getElementById('btn-add-word').onclick = addWordFromInput;
+        inputWord.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addWordFromInput();
+        });
+
+        function addWordFromInput() {
+            const val = inputWord.value.trim().toLowerCase().replace(/[^a-z]/g, '');
+            if (val.length > 0) {
+                wordList.push(val);
+                inputWord.value = '';
+                sfx.playClick();
+                saveWordsToStore();
+                renderWordList();
+            }
+        }
+
+        function renderWordList() {
+            wordListBox.innerHTML = '';
+            wordList.forEach((w, idx) => {
+                const tag = document.createElement('div');
+                tag.className = 'bg-purple-100 text-purple-800 px-3 py-1.5 rounded-xl text-lg font-bold flex items-center gap-2 border border-purple-200';
+                tag.innerHTML = `<span>${w}</span><button onclick="removeWord(${idx})" class="text-purple-400 hover:text-red-500"><i class="fa-solid fa-circle-xmark"></i></button>`;
+                wordListBox.appendChild(tag);
+            });
+        }
+
+        window.removeWord = (idx) => {
+            sfx.playClick();
+            wordList.splice(idx, 1);
+            saveWordsToStore();
+            renderWordList();
+        };
+
+        document.getElementById('btn-start-game').onclick = () => {
+            sfx.playClick();
+            if (wordList.length === 0) return;
+            if (gameMode === 'versus' && players.length === 0) return;
+            setupModal.classList.add('hidden');
+            restartFullGame();
+        };
+
+        // Ready & Controls
+        document.getElementById('btn-ready').onclick = () => {
+            sfx.playClick();
+            readyOverlay.classList.add('opacity-0', 'pointer-events-none');
+            setTimeout(() => readyOverlay.classList.add('hidden'), 300);
+            if (gameMode === 'versus' && !timerInterval) {
+                startTimer();
+            }
+            startGameLoop();
+        };
+
+        document.getElementById('btn-restart').onclick = () => {
+            sfx.playClick();
+            victoryOverlay.classList.add('hidden');
+            restartFullGame();
+        };
+
+        document.getElementById('btn-leaderboard-close').onclick = () => {
+            sfx.playClick();
+            leaderboardModal.classList.add('hidden');
+            restartFullGame();
+        };
+
+        // Directions
+        function setDirection(dx, dy) {
+            sfx.playClick();
+            if (snake.length > 1 && snake[0].x + dx === snake[1].x && snake[0].y + dy === snake[1].y) {
+                return;
+            }
+            nextDir = { x: dx, y: dy };
+        }
+
+        document.getElementById('btn-up').onclick = () => setDirection(0, -1);
+        document.getElementById('btn-down').onclick = () => setDirection(0, 1);
+        document.getElementById('btn-left').onclick = () => setDirection(-1, 0);
+        document.getElementById('btn-right').onclick = () => setDirection(1, 0);
+
+        window.addEventListener('keydown', (e) => {
+            if (!isRunning) return;
+            switch(e.key) {
+                case 'ArrowUp': case 'w': case 'W': setDirection(0, -1); break;
+                case 'ArrowDown': case 's': case 'S': setDirection(0, 1); break;
+                case 'ArrowLeft': case 'a': case 'A': setDirection(-1, 0); break;
+                case 'ArrowRight': case 'd': case 'D': setDirection(1, 0); break;
+            }
+        });
+
+        // Timer Management
+        function startTimer() {
+            stopTimer();
+            timerStartTime = Date.now() - (elapsedSeconds * 1000);
+            timerInterval = setInterval(() => {
+                elapsedSeconds = (Date.now() - timerStartTime) / 1000;
+                timerText.innerText = `${elapsedSeconds.toFixed(1)}s`;
+            }, 100);
+        }
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        function resetTimer() {
+            stopTimer();
+            elapsedSeconds = 0;
+            timerText.innerText = "0.0s";
+        }
+
+        // Game Core Functions
+        function restartFullGame() {
+            if (gameMode === 'versus') {
+                activePlayerIndex = 0;
+                playerTimes = [];
+                playerBanner.classList.remove('hidden');
+                playerBanner.classList.add('flex');
+                timerDisplay.classList.remove('hidden');
+                timerDisplay.classList.add('flex');
+                playerNameDisplay.innerText = players[activePlayerIndex];
+            } else {
+                playerBanner.classList.add('hidden');
+                timerDisplay.classList.add('hidden');
+            }
+            resetTimer();
+            currentWordIndex = 0;
+            updateProgressBar();
+            setupWordPhase();
+        }
+
+        function setupWordPhase() {
+            pauseGame();
+            currentTargetWord = wordList[currentWordIndex].toLowerCase();
+            collectedLetterIndex = 0;
+            updateWordDisplay();
+
+            snake = [
+                { x: 3, y: 5 },
+                { x: 2, y: 5 },
+                { x: 1, y: 5 }
+            ];
+            dir = { x: 1, y: 0 };
+            nextDir = { x: 1, y: 0 };
+
+            scatteredLetters = [];
+            let occupied = [...snake];
+            let lettersToPlace = currentTargetWord.split('');
+
+            lettersToPlace.forEach((char) => {
+                let pos;
+                do {
+                    pos = {
+                        x: Math.floor(Math.random() * GRID_COLS),
+                        y: Math.floor(Math.random() * GRID_ROWS)
+                    };
+                } while (occupied.some(p => p.x === pos.x && p.y === pos.y));
+
+                occupied.push(pos);
+                scatteredLetters.push({
+                    letter: char.toLowerCase(),
+                    x: pos.x,
+                    y: pos.y,
+                    wrongAnimUntil: 0
+                });
+            });
+
+            readyOverlay.classList.remove('hidden', 'opacity-0', 'pointer-events-none');
+            resizeCanvas();
+            draw();
+        }
+
+        function startGameLoop() {
+            isRunning = true;
+            if (gameLoopInterval) clearInterval(gameLoopInterval);
+            gameLoopInterval = setInterval(gameTick, GAME_SPEED);
+        }
+
+        function pauseGame() {
+            isRunning = false;
+            if (gameLoopInterval) clearInterval(gameLoopInterval);
+        }
+
+        function gameTick() {
+            dir = { ...nextDir };
+            let head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+            if (head.x < 0) head.x = GRID_COLS - 1;
+            if (head.x >= GRID_COLS) head.x = 0;
+            if (head.y < 0) head.y = GRID_ROWS - 1;
+            if (head.y >= GRID_ROWS) head.y = 0;
+
+            let letterIndex = scatteredLetters.findIndex(l => l.x === head.x && l.y === head.y);
+            let ateCorrect = false;
+
+            if (letterIndex !== -1) {
+                let item = scatteredLetters[letterIndex];
+                let expectedChar = currentTargetWord[collectedLetterIndex].toLowerCase();
+
+                if (item.letter === expectedChar) {
+                    sfx.playCorrect();
+                    collectedLetterIndex++;
+                    scatteredLetters.splice(letterIndex, 1);
+                    updateWordDisplay();
+                    ateCorrect = true;
+
+                    if (collectedLetterIndex >= currentTargetWord.length) {
+                        pauseGame();
+                        currentWordIndex++;
+                        updateProgressBar();
+                        
+                        setTimeout(() => {
+                            if (currentWordIndex >= wordList.length) {
+                                handleWordSetCompletion();
+                            } else {
+                                setupWordPhase();
+                            }
+                        }, 600);
+                    }
+                } else {
+                    sfx.playWrong();
+                    item.wrongAnimUntil = Date.now() + 2500;
+                }
+            }
+
+            snake.unshift(head);
+            if (!ateCorrect) {
+                snake.pop();
+            }
+
+            draw();
+        }
+
+        function handleWordSetCompletion() {
+            stopTimer();
+            if (gameMode === 'versus') {
+                playerTimes.push({
+                    name: players[activePlayerIndex],
+                    time: elapsedSeconds
+                });
+
+                activePlayerIndex++;
+                if (activePlayerIndex < players.length) {
+                    playerNameDisplay.innerText = players[activePlayerIndex];
+                    resetTimer();
+                    currentWordIndex = 0;
+                    updateProgressBar();
+                    setupWordPhase();
+                } else {
+                    showLeaderboard();
+                }
+            } else {
+                victoryOverlay.classList.remove('hidden');
+                sfx.playCorrect();
+            }
+        }
+
+        // SVG TROPHIES LEADERBOARD DISPLAY
+        function showLeaderboard() {
+            sfx.playCorrect();
+            playerTimes.sort((a, b) => a.time - b.time);
+            leaderboardList.innerHTML = '';
+
+            const trophySVGs = [
+                // Gold Trophy SVG
+                `<svg class="w-10 h-10 shrink-0" viewBox="0 0 24 24" fill="#fbbf24"><path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94A5.01 5.01 0 0011 15.9V18H8v2h8v-2h-3v-2.1c1.86-.41 3.28-1.92 3.61-3.84C19.08 11.63 21 9.55 21 7V6c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/></svg>`,
+                // Silver Trophy SVG
+                `<svg class="w-10 h-10 shrink-0" viewBox="0 0 24 24" fill="#94a3b8"><path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94A5.01 5.01 0 0011 15.9V18H8v2h8v-2h-3v-2.1c1.86-.41 3.28-1.92 3.61-3.84C19.08 11.63 21 9.55 21 7V6c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/></svg>`,
+                // Bronze Trophy SVG
+                `<svg class="w-10 h-10 shrink-0" viewBox="0 0 24 24" fill="#b45309"><path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94A5.01 5.01 0 0011 15.9V18H8v2h8v-2h-3v-2.1c1.86-.41 3.28-1.92 3.61-3.84C19.08 11.63 21 9.55 21 7V6c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/></svg>`
+            ];
+
+            playerTimes.forEach((res, idx) => {
+                const row = document.createElement('div');
+                const isTop3 = idx < 3;
+                const bg = idx === 0 ? 'bg-amber-100 border-amber-300' : (idx === 1 ? 'bg-slate-100 border-slate-300' : (idx === 2 ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'));
+                
+                row.className = `p-3 rounded-2xl border-2 flex items-center justify-between shadow-sm ${bg}`;
+                row.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        ${isTop3 ? trophySVGs[idx] : `<span class="w-10 text-center font-bold text-gray-400 text-xl">#${idx + 1}</span>`}
+                        <span class="text-xl font-bold text-slate-800">${res.name}</span>
+                    </div>
+                    <div class="text-xl font-bold text-pink-600">${res.time.toFixed(1)}s</div>
+                `;
+                leaderboardList.appendChild(row);
+            });
+
+            leaderboardModal.classList.remove('hidden');
+        }
+
+        function updateWordDisplay() {
+            wordDisplay.innerHTML = '';
+            for (let i = 0; i < currentTargetWord.length; i++) {
+                const box = document.createElement('div');
+                box.className = 'w-9 h-9 sm:w-11 sm:h-11 rounded-xl border-4 flex items-center justify-center text-xl sm:text-2xl font-bold transition-all transform scale-100';
+                
+                if (i < collectedLetterIndex) {
+                    box.className += ' bg-emerald-400 border-emerald-500 text-white shadow-md scale-105';
+                    box.innerText = currentTargetWord[i].toLowerCase();
+                } else {
+                    box.className += ' bg-gray-100 border-dashed border-gray-300 text-gray-300';
+                    box.innerText = '_';
+                }
+                wordDisplay.appendChild(box);
+            }
+        }
+
+        function updateProgressBar() {
+            const total = wordList.length;
+            const pct = total === 0 ? 0 : (currentWordIndex / total) * 100;
+            progressFill.style.width = `${pct}%`;
+            progressText.innerText = `${currentWordIndex}/${total}`;
+        }
+
+        // CANVAS DRAWING (16:9 Grid Scale)
+        function draw() {
+            const width = canvas.width;
+            const height = canvas.height;
+            if (!width || !height) return;
+
+            const cellW = width / GRID_COLS;
+            const cellH = height / GRID_ROWS;
+            const cellMin = Math.min(cellW, cellH);
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw Letters
+            const now = Date.now();
+            scatteredLetters.forEach(item => {
+                ctx.save();
+                let x = item.x * cellW;
+                let y = item.y * cellH;
+
+                if (item.wrongAnimUntil > now) {
+                    let shakeX = (Math.random() - 0.5) * 8;
+                    let shakeY = (Math.random() - 0.5) * 8;
+                    ctx.translate(x + shakeX, y + shakeY);
+                    ctx.globalAlpha = 0.25;
+                } else {
+                    ctx.translate(x, y);
+                    ctx.globalAlpha = 1.0;
+                }
+
+                ctx.shadowColor = 'rgba(0,0,0,0.15)';
+                ctx.shadowBlur = 6;
+                drawRoundedRect(ctx, 2, 2, cellW - 4, cellH - 4, 16, '#ffffff', '#ffb703', 4);
+
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#ff2a74';
+                ctx.font = `900 ${cellMin * 0.72}px 'Fredoka One', cursive, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(item.letter.toLowerCase(), cellW / 2, cellH / 2 + 3);
+
+                ctx.restore();
+            });
+
+            // Draw Snake
+            snake.forEach((seg, idx) => {
+                ctx.save();
+                let x = seg.x * cellW;
+                let y = seg.y * cellH;
+
+                if (idx === 0) {
+                    ctx.shadowColor = 'rgba(0,0,0,0.2)';
+                    ctx.shadowBlur = 8;
+                    drawRoundedRect(ctx, x + 1, y + 1, cellW - 2, cellH - 2, 20, '#ff4757', '#ffffff', 3);
+
+                    ctx.fillStyle = '#ff7880';
+                    ctx.beginPath();
+                    ctx.arc(x + cellW * 0.2, y + cellH * 0.65, cellMin * 0.12, 0, Math.PI * 2);
+                    ctx.arc(x + cellW * 0.8, y + cellH * 0.65, cellMin * 0.12, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(x + cellW * 0.3, y + cellH * 0.35, cellMin * 0.18, 0, Math.PI * 2);
+                    ctx.arc(x + cellW * 0.7, y + cellH * 0.35, cellMin * 0.18, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#1e293b';
+                    ctx.beginPath();
+                    ctx.arc(x + cellW * 0.32, y + cellH * 0.35, cellMin * 0.09, 0, Math.PI * 2);
+                    ctx.arc(x + cellW * 0.68, y + cellH * 0.35, cellMin * 0.09, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(x + cellW * 0.35, y + cellH * 0.31, cellMin * 0.035, 0, Math.PI * 2);
+                    ctx.arc(x + cellW * 0.71, y + cellH * 0.31, cellMin * 0.035, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.strokeStyle = '#820014';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(x + cellW * 0.5, y + cellH * 0.58, cellMin * 0.14, 0.1 * Math.PI, 0.9 * Math.PI);
+                    ctx.stroke();
+
+                } else if (idx === snake.length - 1) {
+                    ctx.shadowColor = 'rgba(0,0,0,0.1)';
+                    ctx.shadowBlur = 4;
+                    drawRoundedRect(ctx, x + 4, y + 4, cellW - 8, cellH - 8, 18, '#10b981', '#ffffff', 2);
+                } else {
+                    const isEven = idx % 2 === 0;
+                    const bodyColor = isEven ? '#10b981' : '#34d399';
+                    ctx.shadowColor = 'rgba(0,0,0,0.1)';
+                    ctx.shadowBlur = 4;
+                    drawRoundedRect(ctx, x + 2, y + 2, cellW - 4, cellH - 4, 15, bodyColor, '#ffffff', 2);
+
+                    ctx.fillStyle = isEven ? '#a7f3d0' : '#d1fae5';
+                    ctx.beginPath();
+                    ctx.arc(x + cellW / 2, y + cellH / 2, cellMin * 0.18, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            });
+        }
+
+        window.onload = () => {
+            renderWordList();
+            restartFullGame();
+            setTimeout(resizeCanvas, 50);
+        };
+    </script>
+</body>
+</html>
